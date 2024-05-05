@@ -3,7 +3,9 @@ import {
   AppHeader,
   AppName,
   convertQueryResultToTimeseries,
+  Heading,
   Page,
+  Surface,
   TimeseriesChart,
 } from "@dynatrace/strato-components-preview";
 import React from "react";
@@ -21,7 +23,12 @@ export const App = () => {
           <AppName />
         </AppHeader>
       </Page.Header>
-      <Page.Main>{data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}</Page.Main>
+      <Page.Main>
+        <Surface minHeight={400}>
+          <Heading>Currency rates</Heading>
+          {data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}
+        </Surface>
+      </Page.Main>
     </Page>
   );
 };
