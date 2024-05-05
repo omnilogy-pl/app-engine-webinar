@@ -1,0 +1,10 @@
+{
+  "environmentUrl": "https://uvu34795.apps.dynatrace.com/",
+  "app": {
+    "name": "currency-rates-app",
+    "version": "0.0.0",
+    "description": "An empty project",
+    "id": "my.currency.rates.app",
+    "scopes": [{ "name": "storage:logs:read", "comment": "default template" }, { "name": "storage:buckets:read", "comment": "default template" }]
+  }
+}
