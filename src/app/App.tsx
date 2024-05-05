@@ -1,3 +1,4 @@
+import { IntentPayload } from "@dynatrace-sdk/navigation";
 import { useDqlQuery } from "@dynatrace-sdk/react-hooks";
 import {
   AppHeader,
@@ -5,6 +6,7 @@ import {
   convertQueryResultToTimeseries,
   Flex,
   Heading,
+  IntentButton,
   Page,
   ProgressCircle,
   SelectV2,
@@ -22,6 +24,11 @@ export const App = () => {
   const { data, isLoading } = useDqlQuery({
     body: { query },
   });
+
+  const intentPayload: IntentPayload = {
+    "dt.query": query,
+  };
+
   return (
     <Page>
       <Page.Header>
@@ -41,6 +48,9 @@ export const App = () => {
                 <SelectV2.Option value="now()-11d">Last 11 days</SelectV2.Option>
               </SelectV2.Content>
             </SelectV2>
+            <IntentButton payload={intentPayload} appId="dynatrace.notebooks" intentId="view-query">
+              Open query in Notebook
+            </IntentButton>
           </Flex>
           {isLoading && <ProgressCircle />}
           {data && (

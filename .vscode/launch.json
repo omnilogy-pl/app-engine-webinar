@@ -10,7 +10,7 @@
       "resolveSourceMapLocations": ["**/*.js", "**/*.ts"],
       // The folder name `api` needs to be adjusted if `build.functions.input`
       // is changed in app.config.ts
-      "runtimeSourcemapPausePatterns": ["**/api/**/*"],
+      "runtimeSourcemapPausePatterns": ["**/api/**/*"]
     },
     {
       "name": "Launch Chrome for UI debugging",

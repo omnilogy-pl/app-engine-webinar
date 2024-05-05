@@ -1,5 +1,3 @@
 {
-    "recommendations": [
-        "dynatrace.dynatrace-apps",
-    ]
+  "recommendations": ["dynatrace.dynatrace-apps"]
 }
