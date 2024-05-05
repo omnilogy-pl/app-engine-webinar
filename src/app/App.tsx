@@ -3,17 +3,21 @@ import {
   AppHeader,
   AppName,
   convertQueryResultToTimeseries,
+  Flex,
   Heading,
   Page,
   ProgressCircle,
+  SelectV2,
   Surface,
   TimeseriesChart,
 } from "@dynatrace/strato-components-preview";
 import { Colors } from "@dynatrace/strato-design-tokens";
-import React from "react";
+import React, { useState } from "react";
 
 export const App = () => {
-  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == "CurrencyLayer" and type =="currency.rates" | parse data, "JSON:newData" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;
+  const [value, setValue] = useState<string>("now()-5d");
+
+  const query = `fetch bizevents, from: ${value}, to: now() | filter source == "CurrencyLayer" and type =="currency.rates" | parse data, "JSON:newData" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;
 
   const { data, isLoading } = useDqlQuery({
     body: { query },
@@ -27,7 +31,17 @@ export const App = () => {
       </Page.Header>
       <Page.Main>
         <Surface minHeight={400}>
-          <Heading>Currency rates</Heading>
+          <Flex alignItems="center">
+            <Heading>Currency rates</Heading>
+            <SelectV2 name="timeframe" value={value} onChange={setValue}>
+              <SelectV2.Content>
+                <SelectV2.Option value="now()-5d">Last 5 days</SelectV2.Option>
+                <SelectV2.Option value="now()-7d">Last 7 days</SelectV2.Option>
+                <SelectV2.Option value="now()-9d">Last 9 days</SelectV2.Option>
+                <SelectV2.Option value="now()-11d">Last 11 days</SelectV2.Option>
+              </SelectV2.Content>
+            </SelectV2>
+          </Flex>
           {isLoading && <ProgressCircle />}
           {data && (
             <TimeseriesChart
