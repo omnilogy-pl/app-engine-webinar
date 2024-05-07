@@ -1,1 +1,429 @@
-{"version":"5","defaultTimeframe":{"from":"now-7d","to":"now","details":{"from":{"date":"2024-04-25T09:06:14.645Z","normalized":"now-7d","type":"expression"},"to":{"date":"2024-05-02T09:06:14.645Z","normalized":"now","type":"expression"}}},"sections":[{"id":"6d187d4e-289b-4a9f-a2b4-17cc5e10f322","type":"markdown","markdown":"This Notebook is your step-by-step guide through our hands-on exercises on creating a custom Dynatrace app and query Grail data.\n\n## Create a Copy of this Notebook\nNotebooks are a great way to collaborate, to take notes and to explore. As this is a read-only Notebook please create a COPY of this Notebook so you can make your own notes and upload this notebook to your app shell.\n\n## Project requirements:\n- Node.js in the latest LTS version\n- IDE of your choice\n- Dynatrace Environment\n\n**Links to external resources**:\nYou can find a full example in our GitHub repository [Our repository on GitHub]()"},{"id":"38a07384-1eaf-45a1-b4af-7bb3d36e4f2b","type":"markdown","markdown":"## Getting started with Dynatrace app\n\nTo initialize the application run the `create` command: \n\n```bash\nnpx dt-app@latest create --environment-url <your-env-url> --template empty\n```\n\nThe Dynatrace App Toolkit will ask you to install the dt-app package and to name your app. Next, go to the app's root directory by running `cd <your-app-name>` in the terminal and start the development server by running the following command:\n\n```bash\nnpm run start\n```"},{"id":"95e525d6-d577-4dec-a694-cae5b1c3888a","type":"markdown","markdown":"## Ingest data / Create a workflow\n\nEnrich data on the Dynatrace platform by ingesting metrics, logs, and events within your app. You can do this by using the ingest endpoints of the Dynatrace API. To ingest business events, you can use the ingest function from the businessEventsClient namespace provided by the @dynatrace-sdk/client-classic-environment-v2 package. To automate the ingestion you can create a workflow that will ingest the data in a scheduled manner. This workflow contains **two steps** and fetch data from a simple REST API with real-time and historical exchange rates - https://apilayer.net.\n\n```tsx\nimport { credentialVaultClient } from '@dynatrace-sdk/client-classic-environment-v2';\nimport { actionExecution } from \"@dynatrace-sdk/automation-utils\";\nimport { queryExecutionClient, QueryResult } from '@dynatrace-sdk/client-query'; \n\n\nexport default async function ({ action_execution_id }) {\n  const actionEx = await actionExecution(action_execution_id);\n\n  const authToken = await credentialVaultClient.getCredentialsDetails({\n    id: \"CREDENTIALS_VAULT-8EE4C90D184A0CEF\",\n  });\n\n  const currencyApiUrl = 'http://apilayer.net/api/live?access_key='+authToken.token+'&currencies=EUR,GBP,CAD,USD&source=PLN&format=1';\n  \n  const response = await fetch(currencyApiUrl);\n  return await response.json();\n}\n```\n\n🎓[How to handle secrets within the Dynatrace platform](https://developer.dynatrace.com/develop/security/secrets-management/)\n\n```tsx\nimport { execution } from \"@dynatrace-sdk/automation-utils\";\nimport { businessEventsClient } from \"@dynatrace-sdk/client-classic-environment-v2\";\n\nexport default async function ({ execution_id }) {\n  const exe = await execution(execution_id);\n\n  const result = await exe.result(\"fetch_currency_rates\");\n  const { quotes, source, timestamp } = result;\n\n  for (const key in quotes) {\n    if (Object.prototype.hasOwnProperty.call(quotes, key)) {\n      const currency = key.substring(3); \n\n      const bizevent = {\n        specversion: \"1.0\",\n        source: \"CurrencyLayer\",\n        id: crypto.randomUUID().toString(),\n        type: \"currency.rates\",\n        data: {\n          rate: quotes[key],\n          currency,\n          timestamp,\n        },\n      };\n\n\n      businessEventsClient\n        .ingest({\n          body: bizevent,\n          type: \"application/json; charset=utf-8\",\n        })\n        .then(() => console.log(\"Event ingested\"))\n        .catch((e) => console.error(\"Failed to ingest event: \" + e));\n    }\n  }\n}\n\n```\n🎓[Ingest data docs](https://developer.dynatrace.com/develop/data/ingest-data/)"},{"id":"0ce20fad-f74c-481f-ba7e-acf656c909af","type":"markdown","markdown":"## Query Grail and visualize in the notebook\n\nOnce you have your data ingested in Grail you can query the data and display results directly in the notebook:"},{"id":"abdd0aff-89aa-441d-950b-dd7bec47fbde","type":"dql","showTitle":false,"height":112,"showInput":true,"drilldownPath":[],"state":{"input":{"value":"fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ","timeframe":{"from":"now-3d","to":"now","details":{"from":{"type":"expression","normalized":"now-3d","date":"2024-04-29T09:00:49.016Z"},"to":{"type":"expression","normalized":"now","date":"2024-05-02T09:00:49.016Z"}}}},"visualizationSettings":{"singleValue":{"recordField":"timestamp"},"histogram":{"dataMappings":[]},"honeycomb":{"shape":"hexagon","dataMappings":{"category":"data","value":"timestamp"}}},"state":"success","davis":{"includeLogs":false,"davisVisualization":{"isAvailable":true}},"result":{"code":200,"value":{"records":[{"timestamp":"2024-05-05T17:38:23.582000000+02:00","data":"{\"rate\":0.248742,\"currency\":\"USD\",\"timestamp\":1714923484}","event.id":"aec7873f-2dfa-4410-8042-46908cd1e798","event.kind":"BIZ_EVENT","event.provider":"unknown","event.type":"unknown","id":"f00a834b-46f1-4757-8926-8b60cb9f6370","source":"CurrencyLayer","specversion":"1.0","type":"currency.rates"},{"timestamp":"2024-05-05T17:38:23.571000000+02:00","data":"{\"rate\":0.339993,\"currency\":\"CAD\",\"timestamp\":1714923484}","event.id":"f7c7dd38-01d7-4e47-ab92-cdd0c95195d9","event.kind":"BIZ_EVENT","event.provider":"unknown","event.type":"unknown","id":"3969ca40-4ea6-4b70-a0e1-c19d1a49b16a","source":"CurrencyLayer","specversion":"1.0","type":"currency.rates"},{"timestamp":"2024-05-05T17:38:23.575000000+02:00","data":"{\"rate\":0.198232,\"currency\":\"GBP\",\"timestamp\":1714923484}","event.id":"773ce43b-5555-42b0-8a5a-65bde2601ddf","event.kind":"BIZ_EVENT","event.provider":"unknown","event.type":"unknown","id":"c2650626-a9d6-4cf0-8a23-fc0b2dae3b79","source":"CurrencyLayer","specversion":"1.0","type":"currency.rates"},{"timestamp":"2024-05-05T17:38:23.618000000+02:00","data":"{\"rate\":0.230919,\"currency\":\"EUR\",\"timestamp\":1714923484}","event.id":"19940d22-cacb-4cd5-b2be-462d64cc530c","event.kind":"BIZ_EVENT","event.provider":"unknown","event.type":"unknown","id":"42b0ff34-c115-4d4b-8140-7cac3f8446d6","source":"CurrencyLayer","specversion":"1.0","type":"currency.rates"}],"metadata":{"grail":{"canonicalQuery":"fetch bizevents\n| filter source == \"CurrencyLayer\" AND type == \"currency.rates\"","timezone":"Europe/Warsaw","query":"fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ","scannedRecords":68515,"dqlVersion":"V1_0","scannedBytes":3662471,"scannedDataPoints":0,"analysisTimeframe":{"start":"2024-05-02T20:16:03.680Z","end":"2024-05-05T20:16:03.680Z"},"locale":"und","executionTimeMilliseconds":39,"notifications":[],"queryId":"79f83d19-72bd-487e-90f8-8c83cae8c30e","sampled":false}},"types":[{"mappings":{"timestamp":{"type":"timestamp"},"data":{"type":"string"},"event.id":{"type":"string"},"event.kind":{"type":"string"},"event.provider":{"type":"string"},"event.type":{"type":"string"},"id":{"type":"string"},"source":{"type":"string"},"specversion":{"type":"string"},"type":{"type":"string"}},"indexRange":[0,3]}]},"notifications":[],"dateTime":"2024-05-05T20:16:03.679Z","input":{"value":"fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ","timeframe":{"from":"now-3d","to":"now","details":{"from":{"type":"expression","normalized":"now-3d","date":"2024-04-29T09:00:49.016Z"},"to":{"type":"expression","normalized":"now","date":"2024-05-02T09:00:49.016Z"}}}}},"visualization":"table"}},{"id":"53def1b2-29cd-4041-9147-c74721b3906f","type":"markdown","markdown":"To be able to use the other visualisation we need to add couple more filters:"},{"id":"d17fdb01-cd8a-49df-8700-15c1deea6ef1","type":"dql","title":"","showTitle":false,"showInput":true,"height":94,"state":{"input":{"value":"fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" \n| parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) \n| summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } \n| fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate","timeframe":{"from":"now-7d","to":"now","details":{"from":{"date":"2024-04-25T09:06:14.645Z","normalized":"now-7d","type":"expression"},"to":{"date":"2024-05-02T09:06:14.645Z","normalized":"now","type":"expression"}}}},"visualizationSettings":{"chartSettings":{"categoricalBarChartSettings":{"categoryAxis":"currency","categoryAxisLabel":"currency","valueAxis":"currencyRate","valueAxisLabel":"currencyRate"},"hiddenLegendFields":[],"fieldMapping":{"timestamp":"timeframe","leftAxisValues":["currencyRate"],"leftAxisDimensions":["currency"]}},"singleValue":{"recordField":"currency"},"histogram":{"dataMappings":[{"valueAxis":"currencyRate","rangeAxis":""}]},"honeycomb":{"shape":"hexagon","dataMappings":{"category":"currency","value":"currencyRate"}},"thresholds":[{"id":1,"field":"","title":"","isEnabled":true,"rules":[{"id":0,"color":{"Default":"var(--dt-colors-charts-categorical-color-09-default, #649438)"},"comparator":"≥","label":""},{"id":1,"color":{"Default":"var(--dt-colors-charts-categorical-color-14-default, #d56b1a)"},"comparator":"≥","label":""},{"id":2,"color":{"Default":"var(--dt-colors-charts-categorical-color-12-default, #cd3741)"},"comparator":"≥","label":""}]}]},"state":"success","davis":{"includeLogs":false,"davisVisualization":{"isAvailable":true}},"result":{"code":200,"value":{"records":[{"timeframe":{"start":"2024-04-27T00:00:00.000Z","end":"2024-04-27T00:01:00.000Z"},"currency":"CAD","currencyRate":0.33908},{"timeframe":{"start":"2024-04-27T00:00:00.000Z","end":"2024-04-27T00:01:00.000Z"},"currency":"EUR","currencyRate":0.231585},{"timeframe":{"start":"2024-04-27T00:00:00.000Z","end":"2024-04-27T00:01:00.000Z"},"currency":"GBP","currencyRate":0.198476},{"timeframe":{"start":"2024-04-27T00:00:00.000Z","end":"2024-04-27T00:01:00.000Z"},"currency":"USD","currencyRate":0.247856},{"timeframe":{"start":"2024-04-27T12:00:00.000Z","end":"2024-04-27T12:01:00.000Z"},"currency":"CAD","currencyRate":0.339174},{"timeframe":{"start":"2024-04-27T12:00:00.000Z","end":"2024-04-27T12:01:00.000Z"},"currency":"EUR","currencyRate":0.231649},{"timeframe":{"start":"2024-04-27T12:00:00.000Z","end":"2024-04-27T12:01:00.000Z"},"currency":"GBP","currencyRate":0.196182},{"timeframe":{"start":"2024-04-27T12:00:00.000Z","end":"2024-04-27T12:01:00.000Z"},"currency":"USD","currencyRate":0.247925},{"timeframe":{"start":"2024-04-28T00:00:00.000Z","end":"2024-04-28T00:01:00.000Z"},"currency":"CAD","currencyRate":0.339443},{"timeframe":{"start":"2024-04-28T00:00:00.000Z","end":"2024-04-28T00:01:00.000Z"},"currency":"EUR","currencyRate":0.231833},{"timeframe":{"start":"2024-04-28T00:00:00.000Z","end":"2024-04-28T00:01:00.000Z"},"currency":"GBP","currencyRate":0.196338},{"timeframe":{"start":"2024-04-28T00:00:00.000Z","end":"2024-04-28T00:01:00.000Z"},"currency":"USD","currencyRate":0.248122},{"timeframe":{"start":"2024-04-28T12:00:00.000Z","end":"2024-04-28T12:01:00.000Z"},"currency":"CAD","currencyRate":0.338668},{"timeframe":{"start":"2024-04-28T12:00:00.000Z","end":"2024-04-28T12:01:00.000Z"},"currency":"EUR","currencyRate":0.23164},{"timeframe":{"start":"2024-04-28T12:00:00.000Z","end":"2024-04-28T12:01:00.000Z"},"currency":"GBP","currencyRate":0.198299},{"timeframe":{"start":"2024-04-28T12:00:00.000Z","end":"2024-04-28T12:01:00.000Z"},"currency":"USD","currencyRate":0.24779},{"timeframe":{"start":"2024-04-29T00:00:00.000Z","end":"2024-04-29T00:01:00.000Z"},"currency":"CAD","currencyRate":0.338448},{"timeframe":{"start":"2024-04-29T00:00:00.000Z","end":"2024-04-29T00:01:00.000Z"},"currency":"EUR","currencyRate":0.231341},{"timeframe":{"start":"2024-04-29T00:00:00.000Z","end":"2024-04-29T00:01:00.000Z"},"currency":"GBP","currencyRate":0.197799},{"timeframe":{"start":"2024-04-29T00:00:00.000Z","end":"2024-04-29T00:01:00.000Z"},"currency":"USD","currencyRate":0.247865},{"timeframe":{"start":"2024-04-29T12:00:00.000Z","end":"2024-04-29T12:01:00.000Z"},"currency":"CAD","currencyRate":0.339313},{"timeframe":{"start":"2024-04-29T12:00:00.000Z","end":"2024-04-29T12:01:00.000Z"},"currency":"EUR","currencyRate":0.231658},{"timeframe":{"start":"2024-04-29T12:00:00.000Z","end":"2024-04-29T12:01:00.000Z"},"currency":"GBP","currencyRate":0.197713},{"timeframe":{"start":"2024-04-29T12:00:00.000Z","end":"2024-04-29T12:01:00.000Z"},"currency":"USD","currencyRate":0.248361}],"metadata":{"grail":{"canonicalQuery":"fetch bizevents, from:now() - 3d, to:now()\n| filter source == \"CurrencyLayer\" AND type == \"currency.rates\"\n| parse data, \"JSON:newData\"\n| fieldsAdd time = timestampFromUnixSeconds(newData[timestamp])\n| summarize by:{date = bin(toTimestamp(time), 12h), currency = newData[currency], currencyRate = newData[rate]}, total = count()\n| fields timeframe = timeframe(from:date, to:date + 1m), currency = currency, currencyRate = currencyRate","timezone":"Europe/Warsaw","query":"fetch bizevents, from: now()-3d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate","scannedRecords":65940,"dqlVersion":"V1_0","scannedBytes":3521602,"scannedDataPoints":0,"analysisTimeframe":{"start":"2024-04-27T09:27:03.605Z","end":"2024-04-30T09:27:03.605Z"},"locale":"und","executionTimeMilliseconds":31,"notifications":[],"queryId":"3126065f-29f8-4354-8f96-e9de2b86d427","sampled":false}},"types":[{"mappings":{"timeframe":{"type":"timeframe"},"currency":{"type":"string"},"currencyRate":{"type":"double"}},"indexRange":[0,23]}]},"notifications":[],"dateTime":"2024-04-30T09:27:03.357Z","input":{"value":"fetch bizevents, from: now()-3d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate"}},"visualization":"areaChart"}},{"id":"7ce87747-6dea-4f79-a543-db0ae72af1b8","type":"markdown","markdown":"Want to know more about the Dynatrace Query Language? \n🎓 [Learn DQL](https://dt-url.net/learndql) at the Dynatrace playground."},{"id":"65d74d96-b999-48f6-bacc-d992422b0da1","type":"markdown","markdown":"## Query Grail and visualize data in application\n\n* To be able to query the data directly from application set the permissions in the app config file that the app needs to work. In this case, the app requires access to bizevents. Add the necessary permissions `{ \"name\": \"storage:bizevents:read\", \"comment\": \"default template\" }` in the app.config.json file as follows:\n\n```json\n{\n  \"environmentUrl\": <your-env-url>,\n  \"app\": {\n    \"name\": <your-app-name>,\n    \"version\": \"0.0.0\",\n    \"description\": \"\",\n    \"id\": <your-app-id>,\n    \"scopes\": [\n      { \"name\": \"storage:logs:read\", \"comment\": \"default template\" },\n      { \"name\": \"storage:buckets:read\", \"comment\": \"default template\" },\n      { \"name\": \"storage:bizevents:read\", \"comment\": \"default template\" }\n  }\n}\n```\nFor changes in the config file to take effect, restart the development server using the appropriate command for your operating system.\n\n🎓 [Learn more about permission scopes](https://developer.dynatrace.com/develop/security/add-scopes/)\n\n\nThe Strato design system offers multiple out-of-the-box components to visualize time-series data. You can query Grail data via Dynatrace Query Language (DQL) and display it in a chart. \n\n- Create a variable and copy the DQL query from notebook.\n\n- Import the useDqlQuery hook from the @dynatrace-sdk/react-hooks package in your React component. Then, pass the `query` from before as the query property of the body and extract result to a result variable.\n\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport { Page } from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: {\n      query,\n    },\n  });\n\n  return (\n    <Page>\n      <Page.Header>Header</Page.Header>\n      <Page.Main>Main</Page.Main>\n    </Page>\n  );\n};\n\n```\n\n- Add needed imports to visualize the result.\n\n\nThe data structure of the DQL result is incompatible with the charting components out of the box. That's why Strato provides converters, which converts the result to a format compatible with the TimeseriesChart component. Begin by importing the TimeseriesChart component and the convertQueryResultToTimeseries function from the @dynatrace/strato-components-preview package. The query result isn't available when the component first loads. Therefore, we need to conditionally render the TimeseriesChart only when the data is ready. \n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport { convertQueryResultToTimeseries, Page, TimeseriesChart } from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: {\n      query,\n    },\n  });\n\n  return (\n    <Page>\n      <Page.Header>Header</Page.Header>\n      <Page.Main>{data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}</Page.Main>\n    </Page>\n  );\n};\n\n```"},{"id":"9342c635-0f26-4c10-ab77-8afce39082a3","type":"markdown","markdown":"## Create app structure\n\n* The [Surface](https://developer.dynatrace.com/reference/design-system/preview/layouts-core/Surface/) component is used to structure content on a page.\n\n* Use [Heading](https://developer.dynatrace.com/reference/design-system/preview/typography/Heading/) to render semantic HTML heading elements.\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: { query },\n  });\n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n\n```\n\n\n\n🎓 [Learn more about app structure](https://developer.dynatrace.com/ui-design/app-structure/﻿)"},{"id":"242d5659-e123-4fbb-a84b-83fcd6086494","type":"markdown","markdown":"## Improve visualizations\n\nThe Strato design system offers various options to improve our app's visualization and user experience.\n\n* To improve our app's user experience, let's add a loading indicator. Firstly, extract isLoading prop from the useDQLQuery hook and use it:\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  ProgressCircle,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({ body: { query } });\n\n  return (\n    <Page>\n      <Page.Header>\n       <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {isLoading && <ProgressCircle />}\n          {data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n1. Variant: the TimeseriesChart supports three different chart variants: area, bar and line. If no value is provided in the variant prop, the line variant is used by default.\n2. Gap policy: gaps in data refer to missing or unrepresented values between existing data points. In a dataset exclusively with timestamps, no continuity can be determined and therefore there are always “gaps” between data points regardless of the resolution of the dataset.The TimeseriesChart provides the gapPolicy prop to configure how gaps are visualized in a chart. There are three gapPolicy options available: gap, connect, and threshold. We will use the `connect` option to connect consecutive data points irrespective of the gap using linear interpolation.\n3. Series curve: you can select the curve shape of the line via the curve prop. The available options are 'linear' where line joins will be straight (default option) or 'smooth' for a more fluid curve.\n4. Change the chart color/s: the TimeseriesChart provides a set of predefined color palettes and it also accepts custom color palettes. Apart from all these options for providing a color palette, the TimeseriesChart also offers the ability to override colors for specific series. \n5. Axes: To configure the axes of the TimeseriesChart, the TimeseriesChart.XAxis and TimeseriesChart.YAxis subcomponents can be added. The label property sets the axis label. Or you can use formatter to customize the value.\n6. Thresholds: thresholds are used to mark meaningful ranges or values on a TimeseriesChart and they add contextual information to a numerical axis. There are two variants of thresholds:\n* a specific point represented on the Y-axis and a line across.\n* a range - or filled area - represented by a pill on the Y-axis and a band across.\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  ProgressCircle,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({\n    body: { query },\n  });\n  \n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} PLN`} />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n```\n\n\n#### 🎓 [Check other data visualisation options](https://developer.dynatrace.com/ui-design/dataviz/).  "},{"id":"74532263-28ea-4fc0-b370-94775b874636","type":"markdown","markdown":"## Customize the query string\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  convertQueryResultToTimeseries,\n  Flex,\n  Heading,\n  Page,\n  ProgressCircle,\n  SelectV2,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React, { useState } from \"react\";\n\nexport const App = () => {\n  const [value, setValue] = useState<string>(\"now()-5d\");\n\n  const query = `fetch bizevents, from: ${value}, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({ body: { query } });\n\n  return (\n    <Page>\n    <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Flex alignItems=\"center\">\n            <Heading>Currency rates</Heading>\n            <SelectV2 name=\"timeframe\" value={value} onChange={setValue}>\n              <SelectV2.Content>\n                <SelectV2.Option value=\"now()-5d\">Last 5 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-7d\">Last 7 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-9d\">Last 9 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-11d\">Last 11 days</SelectV2.Option>\n              </SelectV2.Content>\n            </SelectV2>\n          </Flex>\n\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} PLN`} label=\"BASE CURRENCY\" />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n#### 🎓 [Check all the available components](https://developer.dynatrace.com/reference/design-system/).  "},{"id":"2dfd644c-476d-4197-88b9-08d5535fc455","type":"markdown","markdown":"## Drill down in another app\n\nYou can integrate the user flow from your app to other Dynatrace Apps with sending intents, You can trigger the intent from your app in different ways, for example using the <IntentButton> option: \n\n```tsx\nimport { IntentPayload } from \"@dynatrace-sdk/navigation\";\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Flex,\n  Heading,\n  IntentButton,\n  Page,\n  ProgressCircle,\n  SelectV2,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React, { useState } from \"react\";\n\nexport const App = () => {\n  const [value, setValue] = useState<string>(\"now()-5d\");\n\n  const query = `fetch bizevents, from: ${value}, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({\n    body: { query },\n  });\n\n  const intentPayload: IntentPayload = {\n    \"dt.query\": query,\n  };\n\n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Flex alignItems=\"center\">\n            <Heading>Currency rates</Heading>\n            <SelectV2 name=\"timeframe\" value={value} onChange={setValue}>\n              <SelectV2.Content>\n                <SelectV2.Option value=\"now()-5d\">Last 5 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-7d\">Last 7 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-9d\">Last 9 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-11d\">Last 11 days</SelectV2.Option>\n              </SelectV2.Content>\n            </SelectV2>\n            <IntentButton payload={intentPayload} appId=\"dynatrace.notebooks\" intentId=\"view-query\">\n              Open query in Notebook\n            </IntentButton>\n          </Flex>\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} = 1 PLN`} />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n\nButton takes an intentPayload and optional recommendedAppId and recommendedIntentId parameters.\n\n#### 🎓 [Learn more about Intents](https://developer.dynatrace.com/develop/intents/).  "}]}
+{
+  "version": "5",
+  "defaultTimeframe": {
+    "from": "now-7d",
+    "to": "now",
+    "details": {
+      "from": { "date": "2024-04-25T09:06:14.645Z", "normalized": "now-7d", "type": "expression" },
+      "to": { "date": "2024-05-02T09:06:14.645Z", "normalized": "now", "type": "expression" }
+    }
+  },
+  "sections": [
+    {
+      "id": "6d187d4e-289b-4a9f-a2b4-17cc5e10f322",
+      "type": "markdown",
+      "markdown": "This Notebook is your step-by-step guide through our hands-on exercises on creating a custom Dynatrace app and query Grail data.\n\n## Create a Copy of this Notebook\nNotebooks are a great way to collaborate, to take notes and to explore. As this is a read-only Notebook please create a COPY of this Notebook so you can make your own notes and upload this notebook to your app shell.\n\n## Project requirements:\n- Node.js in the latest LTS version\n- IDE of your choice\n- Dynatrace Environment\n\n**Links to external resources**:\nYou can find a full example in our GitHub repository [Our repository on GitHub]()"
+    },
+    {
+      "id": "38a07384-1eaf-45a1-b4af-7bb3d36e4f2b",
+      "type": "markdown",
+      "markdown": "## Getting started with Dynatrace app\n\nTo initialize the application run the `create` command: \n\n```bash\nnpx dt-app@latest create --environment-url <your-env-url> --template empty\n```\n\nThe Dynatrace App Toolkit will ask you to install the dt-app package and to name your app. Next, go to the app's root directory by running `cd <your-app-name>` in the terminal and start the development server by running the following command:\n\n```bash\nnpm run start\n```"
+    },
+    {
+      "id": "95e525d6-d577-4dec-a694-cae5b1c3888a",
+      "type": "markdown",
+      "markdown": "## Ingest data / Create a workflow\n\nEnrich data on the Dynatrace platform by ingesting metrics, logs, and events within your app. You can do this by using the ingest endpoints of the Dynatrace API. To ingest business events, you can use the ingest function from the businessEventsClient namespace provided by the @dynatrace-sdk/client-classic-environment-v2 package. To automate the ingestion you can create a workflow that will ingest the data in a scheduled manner. This workflow contains **two steps** and fetch data from a simple REST API with real-time and historical exchange rates - https://apilayer.net.\n\n```tsx\nimport { credentialVaultClient } from '@dynatrace-sdk/client-classic-environment-v2';\nimport { actionExecution } from \"@dynatrace-sdk/automation-utils\";\nimport { queryExecutionClient, QueryResult } from '@dynatrace-sdk/client-query'; \n\n\nexport default async function ({ action_execution_id }) {\n  const actionEx = await actionExecution(action_execution_id);\n\n  const authToken = await credentialVaultClient.getCredentialsDetails({\n    id: \"CREDENTIALS_VAULT-8EE4C90D184A0CEF\",\n  });\n\n  const currencyApiUrl = 'http://apilayer.net/api/live?access_key='+authToken.token+'&currencies=EUR,GBP,CAD,USD&source=PLN&format=1';\n  \n  const response = await fetch(currencyApiUrl);\n  return await response.json();\n}\n```\n\n🎓[How to handle secrets within the Dynatrace platform](https://developer.dynatrace.com/develop/security/secrets-management/)\n\n```tsx\nimport { execution } from \"@dynatrace-sdk/automation-utils\";\nimport { businessEventsClient } from \"@dynatrace-sdk/client-classic-environment-v2\";\n\nexport default async function ({ execution_id }) {\n  const exe = await execution(execution_id);\n\n  const result = await exe.result(\"fetch_currency_rates\");\n  const { quotes, source, timestamp } = result;\n\n  for (const key in quotes) {\n    if (Object.prototype.hasOwnProperty.call(quotes, key)) {\n      const currency = key.substring(3); \n\n      const bizevent = {\n        specversion: \"1.0\",\n        source: \"CurrencyLayer\",\n        id: crypto.randomUUID().toString(),\n        type: \"currency.rates\",\n        data: {\n          rate: quotes[key],\n          currency,\n          timestamp,\n        },\n      };\n\n\n      businessEventsClient\n        .ingest({\n          body: bizevent,\n          type: \"application/json; charset=utf-8\",\n        })\n        .then(() => console.log(\"Event ingested\"))\n        .catch((e) => console.error(\"Failed to ingest event: \" + e));\n    }\n  }\n}\n\n```\n🎓[Ingest data docs](https://developer.dynatrace.com/develop/data/ingest-data/)"
+    },
+    {
+      "id": "0ce20fad-f74c-481f-ba7e-acf656c909af",
+      "type": "markdown",
+      "markdown": "## Query Grail and visualize in the notebook\n\nOnce you have your data ingested in Grail you can query the data and display results directly in the notebook:"
+    },
+    {
+      "id": "abdd0aff-89aa-441d-950b-dd7bec47fbde",
+      "type": "dql",
+      "showTitle": false,
+      "height": 112,
+      "showInput": true,
+      "drilldownPath": [],
+      "state": {
+        "input": {
+          "value": "fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ",
+          "timeframe": {
+            "from": "now-3d",
+            "to": "now",
+            "details": {
+              "from": { "type": "expression", "normalized": "now-3d", "date": "2024-04-29T09:00:49.016Z" },
+              "to": { "type": "expression", "normalized": "now", "date": "2024-05-02T09:00:49.016Z" }
+            }
+          }
+        },
+        "visualizationSettings": {
+          "singleValue": { "recordField": "timestamp" },
+          "histogram": { "dataMappings": [] },
+          "honeycomb": { "shape": "hexagon", "dataMappings": { "category": "data", "value": "timestamp" } }
+        },
+        "state": "success",
+        "davis": { "includeLogs": false, "davisVisualization": { "isAvailable": true } },
+        "result": {
+          "code": 200,
+          "value": {
+            "records": [
+              {
+                "timestamp": "2024-05-05T17:38:23.582000000+02:00",
+                "data": "{\"rate\":0.248742,\"currency\":\"USD\",\"timestamp\":1714923484}",
+                "event.id": "aec7873f-2dfa-4410-8042-46908cd1e798",
+                "event.kind": "BIZ_EVENT",
+                "event.provider": "unknown",
+                "event.type": "unknown",
+                "id": "f00a834b-46f1-4757-8926-8b60cb9f6370",
+                "source": "CurrencyLayer",
+                "specversion": "1.0",
+                "type": "currency.rates"
+              },
+              {
+                "timestamp": "2024-05-05T17:38:23.571000000+02:00",
+                "data": "{\"rate\":0.339993,\"currency\":\"CAD\",\"timestamp\":1714923484}",
+                "event.id": "f7c7dd38-01d7-4e47-ab92-cdd0c95195d9",
+                "event.kind": "BIZ_EVENT",
+                "event.provider": "unknown",
+                "event.type": "unknown",
+                "id": "3969ca40-4ea6-4b70-a0e1-c19d1a49b16a",
+                "source": "CurrencyLayer",
+                "specversion": "1.0",
+                "type": "currency.rates"
+              },
+              {
+                "timestamp": "2024-05-05T17:38:23.575000000+02:00",
+                "data": "{\"rate\":0.198232,\"currency\":\"GBP\",\"timestamp\":1714923484}",
+                "event.id": "773ce43b-5555-42b0-8a5a-65bde2601ddf",
+                "event.kind": "BIZ_EVENT",
+                "event.provider": "unknown",
+                "event.type": "unknown",
+                "id": "c2650626-a9d6-4cf0-8a23-fc0b2dae3b79",
+                "source": "CurrencyLayer",
+                "specversion": "1.0",
+                "type": "currency.rates"
+              },
+              {
+                "timestamp": "2024-05-05T17:38:23.618000000+02:00",
+                "data": "{\"rate\":0.230919,\"currency\":\"EUR\",\"timestamp\":1714923484}",
+                "event.id": "19940d22-cacb-4cd5-b2be-462d64cc530c",
+                "event.kind": "BIZ_EVENT",
+                "event.provider": "unknown",
+                "event.type": "unknown",
+                "id": "42b0ff34-c115-4d4b-8140-7cac3f8446d6",
+                "source": "CurrencyLayer",
+                "specversion": "1.0",
+                "type": "currency.rates"
+              }
+            ],
+            "metadata": {
+              "grail": {
+                "canonicalQuery": "fetch bizevents\n| filter source == \"CurrencyLayer\" AND type == \"currency.rates\"",
+                "timezone": "Europe/Warsaw",
+                "query": "fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ",
+                "scannedRecords": 68515,
+                "dqlVersion": "V1_0",
+                "scannedBytes": 3662471,
+                "scannedDataPoints": 0,
+                "analysisTimeframe": { "start": "2024-05-02T20:16:03.680Z", "end": "2024-05-05T20:16:03.680Z" },
+                "locale": "und",
+                "executionTimeMilliseconds": 39,
+                "notifications": [],
+                "queryId": "79f83d19-72bd-487e-90f8-8c83cae8c30e",
+                "sampled": false
+              }
+            },
+            "types": [
+              {
+                "mappings": {
+                  "timestamp": { "type": "timestamp" },
+                  "data": { "type": "string" },
+                  "event.id": { "type": "string" },
+                  "event.kind": { "type": "string" },
+                  "event.provider": { "type": "string" },
+                  "event.type": { "type": "string" },
+                  "id": { "type": "string" },
+                  "source": { "type": "string" },
+                  "specversion": { "type": "string" },
+                  "type": { "type": "string" }
+                },
+                "indexRange": [0, 3]
+              }
+            ]
+          },
+          "notifications": [],
+          "dateTime": "2024-05-05T20:16:03.679Z",
+          "input": {
+            "value": "fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" ",
+            "timeframe": {
+              "from": "now-3d",
+              "to": "now",
+              "details": {
+                "from": { "type": "expression", "normalized": "now-3d", "date": "2024-04-29T09:00:49.016Z" },
+                "to": { "type": "expression", "normalized": "now", "date": "2024-05-02T09:00:49.016Z" }
+              }
+            }
+          }
+        },
+        "visualization": "table"
+      }
+    },
+    {
+      "id": "53def1b2-29cd-4041-9147-c74721b3906f",
+      "type": "markdown",
+      "markdown": "To be able to use the other visualisation we need to add couple more filters:"
+    },
+    {
+      "id": "d17fdb01-cd8a-49df-8700-15c1deea6ef1",
+      "type": "dql",
+      "title": "",
+      "showTitle": false,
+      "showInput": true,
+      "height": 94,
+      "state": {
+        "input": {
+          "value": "fetch bizevents\n| filter source == \"CurrencyLayer\" and type ==\"currency.rates\" \n| parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) \n| summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } \n| fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate",
+          "timeframe": {
+            "from": "now-7d",
+            "to": "now",
+            "details": {
+              "from": { "date": "2024-04-25T09:06:14.645Z", "normalized": "now-7d", "type": "expression" },
+              "to": { "date": "2024-05-02T09:06:14.645Z", "normalized": "now", "type": "expression" }
+            }
+          }
+        },
+        "visualizationSettings": {
+          "chartSettings": {
+            "categoricalBarChartSettings": {
+              "categoryAxis": "currency",
+              "categoryAxisLabel": "currency",
+              "valueAxis": "currencyRate",
+              "valueAxisLabel": "currencyRate"
+            },
+            "hiddenLegendFields": [],
+            "fieldMapping": {
+              "timestamp": "timeframe",
+              "leftAxisValues": ["currencyRate"],
+              "leftAxisDimensions": ["currency"]
+            }
+          },
+          "singleValue": { "recordField": "currency" },
+          "histogram": { "dataMappings": [{ "valueAxis": "currencyRate", "rangeAxis": "" }] },
+          "honeycomb": { "shape": "hexagon", "dataMappings": { "category": "currency", "value": "currencyRate" } },
+          "thresholds": [
+            {
+              "id": 1,
+              "field": "",
+              "title": "",
+              "isEnabled": true,
+              "rules": [
+                {
+                  "id": 0,
+                  "color": { "Default": "var(--dt-colors-charts-categorical-color-09-default, #649438)" },
+                  "comparator": "≥",
+                  "label": ""
+                },
+                {
+                  "id": 1,
+                  "color": { "Default": "var(--dt-colors-charts-categorical-color-14-default, #d56b1a)" },
+                  "comparator": "≥",
+                  "label": ""
+                },
+                {
+                  "id": 2,
+                  "color": { "Default": "var(--dt-colors-charts-categorical-color-12-default, #cd3741)" },
+                  "comparator": "≥",
+                  "label": ""
+                }
+              ]
+            }
+          ]
+        },
+        "state": "success",
+        "davis": { "includeLogs": false, "davisVisualization": { "isAvailable": true } },
+        "result": {
+          "code": 200,
+          "value": {
+            "records": [
+              {
+                "timeframe": { "start": "2024-04-27T00:00:00.000Z", "end": "2024-04-27T00:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.33908
+              },
+              {
+                "timeframe": { "start": "2024-04-27T00:00:00.000Z", "end": "2024-04-27T00:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.231585
+              },
+              {
+                "timeframe": { "start": "2024-04-27T00:00:00.000Z", "end": "2024-04-27T00:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.198476
+              },
+              {
+                "timeframe": { "start": "2024-04-27T00:00:00.000Z", "end": "2024-04-27T00:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.247856
+              },
+              {
+                "timeframe": { "start": "2024-04-27T12:00:00.000Z", "end": "2024-04-27T12:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.339174
+              },
+              {
+                "timeframe": { "start": "2024-04-27T12:00:00.000Z", "end": "2024-04-27T12:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.231649
+              },
+              {
+                "timeframe": { "start": "2024-04-27T12:00:00.000Z", "end": "2024-04-27T12:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.196182
+              },
+              {
+                "timeframe": { "start": "2024-04-27T12:00:00.000Z", "end": "2024-04-27T12:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.247925
+              },
+              {
+                "timeframe": { "start": "2024-04-28T00:00:00.000Z", "end": "2024-04-28T00:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.339443
+              },
+              {
+                "timeframe": { "start": "2024-04-28T00:00:00.000Z", "end": "2024-04-28T00:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.231833
+              },
+              {
+                "timeframe": { "start": "2024-04-28T00:00:00.000Z", "end": "2024-04-28T00:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.196338
+              },
+              {
+                "timeframe": { "start": "2024-04-28T00:00:00.000Z", "end": "2024-04-28T00:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.248122
+              },
+              {
+                "timeframe": { "start": "2024-04-28T12:00:00.000Z", "end": "2024-04-28T12:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.338668
+              },
+              {
+                "timeframe": { "start": "2024-04-28T12:00:00.000Z", "end": "2024-04-28T12:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.23164
+              },
+              {
+                "timeframe": { "start": "2024-04-28T12:00:00.000Z", "end": "2024-04-28T12:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.198299
+              },
+              {
+                "timeframe": { "start": "2024-04-28T12:00:00.000Z", "end": "2024-04-28T12:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.24779
+              },
+              {
+                "timeframe": { "start": "2024-04-29T00:00:00.000Z", "end": "2024-04-29T00:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.338448
+              },
+              {
+                "timeframe": { "start": "2024-04-29T00:00:00.000Z", "end": "2024-04-29T00:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.231341
+              },
+              {
+                "timeframe": { "start": "2024-04-29T00:00:00.000Z", "end": "2024-04-29T00:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.197799
+              },
+              {
+                "timeframe": { "start": "2024-04-29T00:00:00.000Z", "end": "2024-04-29T00:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.247865
+              },
+              {
+                "timeframe": { "start": "2024-04-29T12:00:00.000Z", "end": "2024-04-29T12:01:00.000Z" },
+                "currency": "CAD",
+                "currencyRate": 0.339313
+              },
+              {
+                "timeframe": { "start": "2024-04-29T12:00:00.000Z", "end": "2024-04-29T12:01:00.000Z" },
+                "currency": "EUR",
+                "currencyRate": 0.231658
+              },
+              {
+                "timeframe": { "start": "2024-04-29T12:00:00.000Z", "end": "2024-04-29T12:01:00.000Z" },
+                "currency": "GBP",
+                "currencyRate": 0.197713
+              },
+              {
+                "timeframe": { "start": "2024-04-29T12:00:00.000Z", "end": "2024-04-29T12:01:00.000Z" },
+                "currency": "USD",
+                "currencyRate": 0.248361
+              }
+            ],
+            "metadata": {
+              "grail": {
+                "canonicalQuery": "fetch bizevents, from:now() - 3d, to:now()\n| filter source == \"CurrencyLayer\" AND type == \"currency.rates\"\n| parse data, \"JSON:newData\"\n| fieldsAdd time = timestampFromUnixSeconds(newData[timestamp])\n| summarize by:{date = bin(toTimestamp(time), 12h), currency = newData[currency], currencyRate = newData[rate]}, total = count()\n| fields timeframe = timeframe(from:date, to:date + 1m), currency = currency, currencyRate = currencyRate",
+                "timezone": "Europe/Warsaw",
+                "query": "fetch bizevents, from: now()-3d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate",
+                "scannedRecords": 65940,
+                "dqlVersion": "V1_0",
+                "scannedBytes": 3521602,
+                "scannedDataPoints": 0,
+                "analysisTimeframe": { "start": "2024-04-27T09:27:03.605Z", "end": "2024-04-30T09:27:03.605Z" },
+                "locale": "und",
+                "executionTimeMilliseconds": 31,
+                "notifications": [],
+                "queryId": "3126065f-29f8-4354-8f96-e9de2b86d427",
+                "sampled": false
+              }
+            },
+            "types": [
+              {
+                "mappings": {
+                  "timeframe": { "type": "timeframe" },
+                  "currency": { "type": "string" },
+                  "currencyRate": { "type": "double" }
+                },
+                "indexRange": [0, 23]
+              }
+            ]
+          },
+          "notifications": [],
+          "dateTime": "2024-04-30T09:27:03.357Z",
+          "input": {
+            "value": "fetch bizevents, from: now()-3d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate"
+          }
+        },
+        "visualization": "areaChart"
+      }
+    },
+    {
+      "id": "7ce87747-6dea-4f79-a543-db0ae72af1b8",
+      "type": "markdown",
+      "markdown": "Want to know more about the Dynatrace Query Language? \n🎓 [Learn DQL](https://dt-url.net/learndql) at the Dynatrace playground."
+    },
+    {
+      "id": "65d74d96-b999-48f6-bacc-d992422b0da1",
+      "type": "markdown",
+      "markdown": "## Query Grail and visualize data in application\n\n* To be able to query the data directly from application set the permissions in the app config file that the app needs to work. In this case, the app requires access to bizevents. Add the necessary permissions `{ \"name\": \"storage:bizevents:read\", \"comment\": \"default template\" }` in the app.config.json file as follows:\n\n```json\n{\n  \"environmentUrl\": <your-env-url>,\n  \"app\": {\n    \"name\": <your-app-name>,\n    \"version\": \"0.0.0\",\n    \"description\": \"\",\n    \"id\": <your-app-id>,\n    \"scopes\": [\n      { \"name\": \"storage:logs:read\", \"comment\": \"default template\" },\n      { \"name\": \"storage:buckets:read\", \"comment\": \"default template\" },\n      { \"name\": \"storage:bizevents:read\", \"comment\": \"default template\" }\n  }\n}\n```\nFor changes in the config file to take effect, restart the development server using the appropriate command for your operating system.\n\n🎓 [Learn more about permission scopes](https://developer.dynatrace.com/develop/security/add-scopes/)\n\n\nThe Strato design system offers multiple out-of-the-box components to visualize time-series data. You can query Grail data via Dynatrace Query Language (DQL) and display it in a chart. \n\n- Create a variable and copy the DQL query from notebook.\n\n- Import the useDqlQuery hook from the @dynatrace-sdk/react-hooks package in your React component. Then, pass the `query` from before as the query property of the body and extract result to a result variable.\n\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport { Page } from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: {\n      query,\n    },\n  });\n\n  return (\n    <Page>\n      <Page.Header>Header</Page.Header>\n      <Page.Main>Main</Page.Main>\n    </Page>\n  );\n};\n\n```\n\n- Add needed imports to visualize the result.\n\n\nThe data structure of the DQL result is incompatible with the charting components out of the box. That's why Strato provides converters, which converts the result to a format compatible with the TimeseriesChart component. Begin by importing the TimeseriesChart component and the convertQueryResultToTimeseries function from the @dynatrace/strato-components-preview package. The query result isn't available when the component first loads. Therefore, we need to conditionally render the TimeseriesChart only when the data is ready. \n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport { convertQueryResultToTimeseries, Page, TimeseriesChart } from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: {\n      query,\n    },\n  });\n\n  return (\n    <Page>\n      <Page.Header>Header</Page.Header>\n      <Page.Main>{data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}</Page.Main>\n    </Page>\n  );\n};\n\n```"
+    },
+    {
+      "id": "9342c635-0f26-4c10-ab77-8afce39082a3",
+      "type": "markdown",
+      "markdown": "## Create app structure\n\n* The [Surface](https://developer.dynatrace.com/reference/design-system/preview/layouts-core/Surface/) component is used to structure content on a page.\n\n* Use [Heading](https://developer.dynatrace.com/reference/design-system/preview/typography/Heading/) to render semantic HTML heading elements.\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data } = useDqlQuery({\n    body: { query },\n  });\n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n\n```\n\n\n\n🎓 [Learn more about app structure](https://developer.dynatrace.com/ui-design/app-structure/﻿)"
+    },
+    {
+      "id": "242d5659-e123-4fbb-a84b-83fcd6086494",
+      "type": "markdown",
+      "markdown": "## Improve visualizations\n\nThe Strato design system offers various options to improve our app's visualization and user experience.\n\n* To improve our app's user experience, let's add a loading indicator. Firstly, extract isLoading prop from the useDQLQuery hook and use it:\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  ProgressCircle,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({ body: { query } });\n\n  return (\n    <Page>\n      <Page.Header>\n       <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {isLoading && <ProgressCircle />}\n          {data && <TimeseriesChart data={convertQueryResultToTimeseries(data)}></TimeseriesChart>}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n1. Variant: the TimeseriesChart supports three different chart variants: area, bar and line. If no value is provided in the variant prop, the line variant is used by default.\n2. Gap policy: gaps in data refer to missing or unrepresented values between existing data points. In a dataset exclusively with timestamps, no continuity can be determined and therefore there are always “gaps” between data points regardless of the resolution of the dataset.The TimeseriesChart provides the gapPolicy prop to configure how gaps are visualized in a chart. There are three gapPolicy options available: gap, connect, and threshold. We will use the `connect` option to connect consecutive data points irrespective of the gap using linear interpolation.\n3. Series curve: you can select the curve shape of the line via the curve prop. The available options are 'linear' where line joins will be straight (default option) or 'smooth' for a more fluid curve.\n4. Change the chart color/s: the TimeseriesChart provides a set of predefined color palettes and it also accepts custom color palettes. Apart from all these options for providing a color palette, the TimeseriesChart also offers the ability to override colors for specific series. \n5. Axes: To configure the axes of the TimeseriesChart, the TimeseriesChart.XAxis and TimeseriesChart.YAxis subcomponents can be added. The label property sets the axis label. Or you can use formatter to customize the value.\n6. Thresholds: thresholds are used to mark meaningful ranges or values on a TimeseriesChart and they add contextual information to a numerical axis. There are two variants of thresholds:\n* a specific point represented on the Y-axis and a line across.\n* a range - or filled area - represented by a pill on the Y-axis and a band across.\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Heading,\n  Page,\n  ProgressCircle,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React from \"react\";\n\nexport const App = () => {\n  const query = `fetch bizevents, from: now()-7d, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({\n    body: { query },\n  });\n  \n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Heading>Currency rates</Heading>\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} PLN`} />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n```\n\n\n#### 🎓 [Check other data visualisation options](https://developer.dynatrace.com/ui-design/dataviz/).  "
+    },
+    {
+      "id": "74532263-28ea-4fc0-b370-94775b874636",
+      "type": "markdown",
+      "markdown": "## Customize the query string\n\n```tsx\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  convertQueryResultToTimeseries,\n  Flex,\n  Heading,\n  Page,\n  ProgressCircle,\n  SelectV2,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React, { useState } from \"react\";\n\nexport const App = () => {\n  const [value, setValue] = useState<string>(\"now()-5d\");\n\n  const query = `fetch bizevents, from: ${value}, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({ body: { query } });\n\n  return (\n    <Page>\n    <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Flex alignItems=\"center\">\n            <Heading>Currency rates</Heading>\n            <SelectV2 name=\"timeframe\" value={value} onChange={setValue}>\n              <SelectV2.Content>\n                <SelectV2.Option value=\"now()-5d\">Last 5 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-7d\">Last 7 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-9d\">Last 9 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-11d\">Last 11 days</SelectV2.Option>\n              </SelectV2.Content>\n            </SelectV2>\n          </Flex>\n\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} PLN`} label=\"BASE CURRENCY\" />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n#### 🎓 [Check all the available components](https://developer.dynatrace.com/reference/design-system/).  "
+    },
+    {
+      "id": "2dfd644c-476d-4197-88b9-08d5535fc455",
+      "type": "markdown",
+      "markdown": "## Drill down in another app\n\nYou can integrate the user flow from your app to other Dynatrace Apps with sending intents, You can trigger the intent from your app in different ways, for example using the <IntentButton> option: \n\n```tsx\nimport { IntentPayload } from \"@dynatrace-sdk/navigation\";\nimport { useDqlQuery } from \"@dynatrace-sdk/react-hooks\";\nimport {\n  AppHeader,\n  AppName,\n  convertQueryResultToTimeseries,\n  Flex,\n  Heading,\n  IntentButton,\n  Page,\n  ProgressCircle,\n  SelectV2,\n  Surface,\n  TimeseriesChart,\n} from \"@dynatrace/strato-components-preview\";\nimport { Colors } from \"@dynatrace/strato-design-tokens\";\nimport React, { useState } from \"react\";\n\nexport const App = () => {\n  const [value, setValue] = useState<string>(\"now()-5d\");\n\n  const query = `fetch bizevents, from: ${value}, to: now() | filter source == \"CurrencyLayer\" and type ==\"currency.rates\" | parse data, \"JSON:newData\" | fieldsAdd time = timestampFromUnixSeconds(newData[timestamp]) | summarize total=count(), by: { date=bin(toTimestamp(time), 12h), currency=newData[currency], currencyRate=newData[rate] } | fields timeframe=timeframe(from:date, to:date + 1min), currency=currency, currencyRate=currencyRate`;\n\n  const { data, isLoading } = useDqlQuery({\n    body: { query },\n  });\n\n  const intentPayload: IntentPayload = {\n    \"dt.query\": query,\n  };\n\n  return (\n    <Page>\n      <Page.Header>\n        <AppHeader>\n          <AppName />\n        </AppHeader>\n      </Page.Header>\n      <Page.Main>\n        <Surface minHeight={400}>\n          <Flex alignItems=\"center\">\n            <Heading>Currency rates</Heading>\n            <SelectV2 name=\"timeframe\" value={value} onChange={setValue}>\n              <SelectV2.Content>\n                <SelectV2.Option value=\"now()-5d\">Last 5 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-7d\">Last 7 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-9d\">Last 9 days</SelectV2.Option>\n                <SelectV2.Option value=\"now()-11d\">Last 11 days</SelectV2.Option>\n              </SelectV2.Content>\n            </SelectV2>\n            <IntentButton payload={intentPayload} appId=\"dynatrace.notebooks\" intentId=\"view-query\">\n              Open query in Notebook\n            </IntentButton>\n          </Flex>\n          {isLoading && <ProgressCircle />}\n          {data && (\n            <TimeseriesChart\n              data={convertQueryResultToTimeseries(data)}\n              variant=\"line\"\n              gapPolicy=\"connect\"\n              colorPalette=\"purple-rain\"\n              curve=\"smooth\"\n            >\n              <TimeseriesChart.YAxis formatter={(value) => `${value} = 1 PLN`} />\n              <TimeseriesChart.Threshold\n                data={{ value: 0.3 }}\n                color={Colors.Charts.Threshold.Bad.Default}\n                label=\"Some threshold label\"\n              />\n            </TimeseriesChart>\n          )}\n        </Surface>\n      </Page.Main>\n    </Page>\n  );\n};\n\n```\n\n\nButton takes an intentPayload and optional recommendedAppId and recommendedIntentId parameters.\n\n#### 🎓 [Learn more about Intents](https://developer.dynatrace.com/develop/intents/).  "
+    }
+  ]
+}
