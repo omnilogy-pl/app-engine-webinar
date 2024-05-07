@@ -61,7 +61,7 @@ export const App = () => {
               colorPalette="purple-rain"
               curve="smooth"
             >
-              <TimeseriesChart.YAxis formatter={(value) => `${value} PLN`} />
+              <TimeseriesChart.YAxis formatter={(value) => `${value} = 1 PLN`} />
               <TimeseriesChart.Threshold
                 data={{ value: 0.3 }}
                 color={Colors.Charts.Threshold.Bad.Default}
